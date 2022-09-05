@@ -1,42 +1,59 @@
 from flask import Flask, request
 import json
 import requests
-from helpers import save_json_to_file
+from helpers import us_real_esate_mapping
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
 app = Flask(__name__)
 
+us_real_estate_api_key = os.environ['US_REAL_ESTATE_API_KEY']
+ingest_host = os.environ['INGEST_HOST']
 
-@app.route('/')
-def hello():
-    return 'Hello, World!'
-
-
-@app.route('/properties-by-location', methods=['POST'])
+# Get all properties for sale in a city
+# Params example:
+# city: 'Jacksonville'
+# state_code: 'Fl'
+# limit: 10
+# offset: 20
+@app.route('/fetch-properties-by-city', methods=['POST'])
 def fetch_properties():
     body = json.loads(request.data)
     city = body['city']
     state_code = body['state_code']
+    offset = body['offset'] if body["offset"] else 0
+    limit = body['limit'] if body['limit'] else 42
 
-    # url = "https://us-real-estate.p.rapidapi.com/v2/for-sale"
-    # querystring = {
-    #     "offset": "0",
-    #     "limit": "42",
-    #     "state_code": f"{state_code.upper()}",
-    #     "city": f"{city.capitalize()}",
-    #     "sort": "newest"
-    # }
-    # headers = {
-    #     "X-RapidAPI-Key": "c4182ea640msh91c3897924ad99ap13e4f9jsn42bf788eaff9",
-    #     "X-RapidAPI-Host": "us-real-estate.p.rapidapi.com"
-    # }
-    # response = requests.request(
-    #     "GET", url, headers=headers, params=querystring)
+    url = "https://us-real-estate.p.rapidapi.com/v2/for-sale"
+    querystring = {
+        "offset": f"{offset}",
+        "limit": f"{limit}",
+        "state_code": f"{state_code.upper()}",
+        "city": f"{city.capitalize()}",
+        "sort": "newest"
+    }
+    headers = {
+        "X-RapidAPI-Key": us_real_estate_api_key,
+        "X-RapidAPI-Host": "us-real-estate.p.rapidapi.com"
+    }
+    response = requests.request(
+        "GET", url, headers=headers, params=querystring)
 
-    # jsonFilePath = f'{os.getcwd()}/extractor/us-real-estate-api/jax_properties.json'
+    addresses = []
 
-    # save_json_to_file(response.text, jsonFilePath)
-    return f'Properties for {city} {state_code} saved'
+    for api_property in response.json()["data"]["home_search"]["results"]:
+        property_record = us_real_esate_mapping(api_property)
+        res = requests.post(
+            f'{ingest_host}/properties/ingest/single', json=property_record)
+        res.raise_for_status()
+        print(res.json())
+        print(res.text)
+        print('\n')
+        addresses.append(str(res.content))
+
+    return f'{response.json()["data"]["home_search"]["count"]} properties for {city} {state_code} saved'
+
 
 
 if __name__ == '__main__':
