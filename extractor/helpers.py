@@ -1,6 +1,7 @@
 import json, requests
 from dotenv import load_dotenv
 import os
+from random import randrange
 
 load_dotenv()
 rent_api_key = os.environ['RENT_API_KEY']
@@ -86,23 +87,28 @@ def us_real_esate_mapping(property):
     new_property['equity_required'] = new_property['down_payment'] + \
         new_property['closing_costs']
     new_property['mortgage_rate'] = 0.05
-    new_property['mortgage'] = get_mortgage_payment(
+    new_property['mortgage_payment'] = get_mortgage_payment(
         new_property['loan_amount'], new_property['mortgage_rate'], 30)
     new_property['total_cash_invested'] = new_property['equity_required']
 
+    # Implement if I can find a cheaper API
+    # rent_from_api = get_rent(
+    #     property['description']['beds'],
+    #     new_property['address_line_1'],
+    #     new_property['address_line_2'],
+    #     new_property['city'],
+    #     new_property['state'],
+    #     new_property['zipcode'],
+    # )
 
-    rent_from_api = get_rent(
-        new_property['address_line_1'],
-        new_property['address_line_2'],
-        new_property['city'],
-        new_property['state'],
-        new_property['zipcode'],
+    section_8_rent = get_section_8_rent(
+        property['description']['beds']
     )
 
     # Operating Expenses
     new_property['property_tax'] = 0
     new_property['hoa'] = 0
-    new_property['property_management'] = rent_from_api * 0.1
+    new_property['property_management'] = section_8_rent * 0.1
     new_property['home_insurance'] = 0
     new_property['monthly_repairs'] = 0
     new_property['monthly_capex'] = 0
@@ -110,10 +116,10 @@ def us_real_esate_mapping(property):
     new_property['operating_expenses'] = 0
 
     # Income
-    new_property['rent'] = rent_from_api
+    new_property['rent'] = section_8_rent
     new_property['rent_after_vacancy'] = new_property['rent'] * (1 - 0.083)
     new_property['effective_gross_income'] = new_property['rent_after_vacancy']
-    new_property['net_operating_income'] = rent_from_api - \
+    new_property['net_operating_income'] = section_8_rent - \
         new_property['operating_expenses']
     new_property['net_cash_flow'] = new_property['effective_gross_income'] - \
         new_property['total_monthly_expenses']
@@ -133,31 +139,39 @@ def get_mortgage_payment(loan_amount, interest_rate, term):
         (1 - (1 + monthly_interest_rate) ** (-term * 12))
     return monthly_payment
 
-
-def get_rent(address_line_1, address_line_2, city, state, zipcode):
-    # TODO: Find better way to get rent
-    # Add a sleep to account for API rate limiting
-    return 0
-    full_address = ''
-    if address_line_2 == '':
-        full_address = f'{address_line_1}, {address_line_2}, {city}, {state}, {zipcode}'
-    else:
-        full_address = f'{address_line_1}, {city}, {state}, {zipcode}'
-
-    url = "https://realtymole-rental-estimate-v1.p.rapidapi.com/rentalPrice"
-
-    querystring = {"address": full_address, "compCount": "0"}
-
-    headers = {
-        "X-RapidAPI-Key": rent_api_key,
-        "X-RapidAPI-Host": "realtymole-rental-estimate-v1.p.rapidapi.com"
+def get_section_8_rent(num_bedrooms):
+    rent_by_bedroom = {
+        # 0 is a studio
+        0: 746,
+        1: 921,
+        2: 1113,
+        3: 1455,
+        4: 1852,
     }
+    return rent_by_bedroom[num_bedrooms]
 
-    response = requests.request(
-        "GET", url, headers=headers, params=querystring)
 
-    print(json.loads(response.text))
+# def get_rent(num_bedrooms, address_line_1, address_line_2, city, state, zipcode):
+#     full_address = ''
+#     if address_line_2 == '':
+#         full_address = f'{address_line_1}, {address_line_2}, {city}, {state}, {zipcode}'
+#     else:
+#         full_address = f'{address_line_1}, {city}, {state}, {zipcode}'
 
-    # TODO add rentRangeLow and rentRangeHigh
+#     url = "https://realtymole-rental-estimate-v1.p.rapidapi.com/rentalPrice"
 
-    return json.loads(response.text)['rent']
+#     querystring = {"address": full_address, "compCount": "0"}
+
+#     headers = {
+#         "X-RapidAPI-Key": rent_api_key,
+#         "X-RapidAPI-Host": "realtymole-rental-estimate-v1.p.rapidapi.com"
+#     }
+
+#     response = requests.request(
+#         "GET", url, headers=headers, params=querystring)
+
+#     print(json.loads(response.text))
+
+#     # TODO add rentRangeLow and rentRangeHigh
+
+#     return json.loads(response.text)['rent']
